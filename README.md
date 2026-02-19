@@ -76,6 +76,10 @@ Compiling the code in the above manner will yield working, but very slow executa
 
     cmake .. -DCMAKE_BUILD_TYPE=Release
     
+or
+
+    CMAKE_POLICY_VERSION_MINIMUM=3.5 cmake .. -DCMAKE_BUILD_TYPE=Release
+
 Followed by:
 
     make 

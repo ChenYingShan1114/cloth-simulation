@@ -30,7 +30,6 @@ void dV_membrane_corotational_dq(Eigen::Vector9d &dV, Eigen::Ref<const Eigen::Ve
     Eigen::Matrix<double, 4, 3> dphi_43;
     dphi_43 << dX, N.transpose();
 
-
     // world coordinate normal vector
     Eigen::Vector3d dx1 = Eigen::Vector3d::Zero();
     Eigen::Vector3d dx2 = Eigen::Vector3d::Zero();

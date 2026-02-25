@@ -5,5 +5,14 @@ void collision_detection_cloth_sphere(std::vector<unsigned int> &cloth_index, st
     cloth_index.clear();
     normals.clear();
 
-    
+    for (int i = 0; i < q.size() / 3; i++) {
+        Eigen::Vector3d qi = q.segment<3>(3 * i);
+        Eigen::Vector3d n = qi - center;
+        double dist = (qi - center).norm();
+        if (dist < radius) {
+            n.normalize();
+            normals.push_back(n);
+            cloth_index.push_back(i);
+        }
+    }
 }

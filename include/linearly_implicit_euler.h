@@ -20,7 +20,33 @@ inline void linearly_implicit_euler(Eigen::VectorXd &q, Eigen::VectorXd &qdot, d
                             const Eigen::SparseMatrixd &mass,  FORCE &force, STIFFNESS &stiffness, 
                             Eigen::VectorXd &tmp_force, Eigen::SparseMatrixd &tmp_stiffness) {
     
-    
+    force(tmp_force, q, qdot);
+    stiffness(tmp_stiffness, q, qdot);
 
+    Eigen::SparseMatrixd A;
+    A = mass - dt * dt * tmp_stiffness;
+    A.makeCompressed(); // Recommended after filling
+
+    // Declare the SimplicialLDLT solver class
+    Eigen::SimplicialLDLT<Eigen::SparseMatrixd> solver;
+
+    // Compute the LDLT factorization of A
+    solver.compute(A);
+    
+    // Check if the decomposition was successful
+    if (solver.info() != Eigen::Success) {
+        std::cerr << "LDLT decomposition failed. The matrix might not be symmetric positive definite." << std::endl;
+    }
+
+    // Create an identity matrix I to represent the right-hand side of AX = I
+    // Note: The "inverse" matrix A_inv will be densem so a dense MatrixXd is used
+    Eigen::MatrixXd I(A.rows(), A.cols());
+    I.setIdentity();
+
+    // Solve the system AX = I for X, which results in the inverse matrix A_inv
+    Eigen::MatrixXd A_inv = solver.solve(I);
+
+    qdot = A_inv * (mass * qdot + dt * tmp_force); 
+    q = q + dt * qdot;
 
 }

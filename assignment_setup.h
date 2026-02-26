@@ -18,6 +18,7 @@
 
 #include <mass_matrix_mesh.h>
 #include <linearly_implicit_euler.h>
+#include <implicit_euler.h>
 #include <dsvd.h>
 
 #include <dphi_cloth_triangle_dX.h>
@@ -95,16 +96,17 @@ inline void simulate(Eigen::VectorXd &q, Eigen::VectorXd &qdot, double dt, doubl
         spring_points.push_back(std::make_pair((P.transpose()*q+x0).segment<3>(3*Visualize::picked_vertices()[pickedi]) + Visualize::mouse_drag_world() + Eigen::Vector3d::Constant(1e-6),3*Visualize::picked_vertices()[pickedi]));
     }
 
-    
-    KE = PE = 0.;
-
     auto energy = [&](Eigen::Ref<const Eigen::VectorXd> qdot_1)->double {
         double E = 0;
         Eigen::VectorXd newq = P.transpose()*(q+dt*qdot_1)+x0;
 
         for(unsigned int ei=0; ei<F.rows(); ++ei) {
-            
-            V_membrane_corotational(V_ele,newq , Eigen::Map<Eigen::Matrix3d>(dX.row(ei).data()), V, F.row(ei), a0(ei), C, D);
+            // dX: 1x9 -> 3x3
+            Eigen::Matrix<double, 1, 9> tmp_row;
+            tmp_row = dX.row(ei); //ei is the triangle index. 
+            Eigen::Matrix3d dX_tmp = Eigen::Map<const Eigen::Matrix3d>(tmp_row.data());
+
+            V_membrane_corotational(V_ele, newq, dX_tmp, V, F.row(ei), a0(ei), C, D);
             E += V_ele;
         }
 
@@ -146,7 +148,10 @@ inline void simulate(Eigen::VectorXd &q, Eigen::VectorXd &qdot, double dt, doubl
 
     qtmp = q; 
     //unconstrained velocity
-    linearly_implicit_euler(q, qdot, dt, M, force, stiffness, tmp_force, tmp_stiffness);
+    if (fully_implicit)
+        implicit_euler(q, qdot, dt, M, energy, force, stiffness, tmp_qdot, tmp_force, tmp_stiffness);
+    else
+        linearly_implicit_euler(q, qdot, dt, M, force, stiffness, tmp_force, tmp_stiffness);
     
     //velocity filter 
     if(collision_detection_on) {
@@ -155,6 +160,21 @@ inline void simulate(Eigen::VectorXd &q, Eigen::VectorXd &qdot, double dt, doubl
 
     q = qtmp + dt*qdot;
     //std::cout<<q.transpose()<<"\n";
+
+    KE = PE = 0.;
+
+    T_cloth(KE, P.transpose()*qdot, V, F, M);
+    for (unsigned int ei = 0; ei < F.rows(); ++ei) {
+        // dX: 1x9 -> 3x3
+        Eigen::Matrix<double, 1, 9> tmp_row;
+        tmp_row = dX.row(ei); //ei is the triangle index. 
+        Eigen::Matrix3d dX_tmp = Eigen::Map<const Eigen::Matrix3d>(tmp_row.data());
+
+        V_membrane_corotational(V_ele, P.transpose()*q+x0, dX_tmp, V, F.row(ei), a0(ei), C, D);
+        PE += V_ele;
+    }
+
+    Visualize::add_energy(t, KE, PE);
 }
 
 inline void draw(Eigen::Ref<const Eigen::VectorXd> q, Eigen::Ref<const Eigen::VectorXd> qdot, double t) {
@@ -253,6 +273,32 @@ inline void assignment_setup(int argc, char **argv, Eigen::VectorXd &q, Eigen::V
     qdot = P*qdot;
     M = P*M*P.transpose();
     
+    //igl additional menu setup
+    // Add content to the default menu window
+    Visualize::viewer_menu().callback_draw_custom_window = [&]()
+    {
+        // Define next window position + size
+        ImGui::SetNextWindowPos(ImVec2(1200.f * Visualize::viewer_menu().menu_scaling(), 10), ImGuiSetCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(400, 500), ImGuiSetCond_FirstUseEver);
+        ImGui::Begin(
+            "Energy Plot", nullptr,
+            ImGuiWindowFlags_NoSavedSettings
+
+        );
+
+        ImVec2 min = ImGui::GetWindowContentRegionMin();
+        ImVec2 max = ImGui::GetWindowContentRegionMax();
+
+        max.x = ( max.x - min.x ) / 2;
+        max.y -= min.y + ImGui::GetItemsLineHeightWithSpacing() * 3;
+
+        Visualize::plot_energy("T", 1, ImVec2(-15,10), ImVec2(0,1e6), ImGui::GetColorU32(ImGuiCol_PlotLines));
+        Visualize::plot_energy("V", 2, ImVec2(-15,10), ImVec2(0,2e7), ImGui::GetColorU32(ImGuiCol_HeaderActive));
+        Visualize::plot_energy("T+V", 3, ImVec2(-15,10), ImVec2(0,4e7), ImGui::GetColorU32(ImGuiCol_ColumnActive));
+
+        ImGui::End();
+    };
+
     Visualize::viewer().callback_key_down = key_down_callback;
 
 }
